@@ -1,6 +1,6 @@
 # Inactivity Monitor plugin for FM-DX Webserver
 
-This plugin monitors for webpage user inactivity over a specified period of time before a popup asks the user if they are still there, once the timer has expired. If no response, the user is then automatically kicked from the server. _Timer is inactive when logged in as administrator._
+This plugin monitors for webpage user inactivity over a specified period of time before a popup asks the user if they are still there, once the timer has expired. If no response, the user is then automatically kicked from the server. _Timer is inactive for users logged in with administrator or tuner privileges._
 
 ![image](https://github.com/user-attachments/assets/51acf67a-1505-4c08-8b62-21665cb25d93)
 
