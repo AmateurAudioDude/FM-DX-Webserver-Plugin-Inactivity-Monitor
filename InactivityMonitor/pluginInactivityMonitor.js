@@ -1,5 +1,5 @@
 /*
-    Inactivity Monitor v1.0.0 by AAD
+    Inactivity Monitor v1.0.1 by AAD
     https://github.com/AmateurAudioDude/FM-DX-Webserver-Plugin-Inactivity-Monitor
 */
 
@@ -51,7 +51,7 @@ const checkInactivity = () => {
     }
 };
 
-// Function to display popup
+// Display popup
 const showPopup = () => {
     if (!popupDisplayed) {
         popupDisplayed = true; // Prevent multiple popups
@@ -80,7 +80,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function checkAdminMode() {
     const bodyText = document.body.textContent || document.body.innerText;
-    isTuneAuthenticated = bodyText.includes("You are logged in as an administrator.") || bodyText.includes("You are logged in as an adminstrator.");
+    isTuneAuthenticated = bodyText.includes("You are logged in as an administrator.") || bodyText.includes("You are logged in as an adminstrator.") ||bodyText.includes("You are logged in and can control the receiver.");
     if (isTuneAuthenticated) console.log("Logged in as administrator, Inactivity Monitor plugin inactive.");
 }
 

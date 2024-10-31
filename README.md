@@ -13,6 +13,10 @@ This plugin monitors for webpage user inactivity over a specified period of time
 #### Configuration options found in `pluginInactivityMonitor.js`
 
 
+v1.0.1
+------
+* Included tune password for timer bypass
+
 v1.0.0
 ------
 * Initial release
