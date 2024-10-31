@@ -9,7 +9,7 @@
 
 let inactivityLimit = 30; // minutes
 let popupWaitTime = 120; // seconds
-let resetTimerOnMouseMove = true;         // Mouse movement
+let resetTimerOnMouseMove = true;         // Mouse movement (within webserver webpage only)
 let resetTimerOnMouseClick = true;        // Mouse click
 let resetTimerOnMouseScroll = true;       // Mouse scroll wheel
 let resetTimerOnKeyboard = true;          // Keyboard press
