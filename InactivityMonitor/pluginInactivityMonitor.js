@@ -44,7 +44,7 @@ if (resetTimerOnFrequencyChange) {
 }
 
 const checkInactivity = () => {
-    if (!isTuneAuthenticated) inactivityTime += 1000; // Increment inactivity by 1 second
+    inactivityTime += 1000; // Increment inactivity by 1 second
     // console.log(inactivityTime / 1000, 'second(s)');
     if (inactivityTime >= inactivityLimit * 60 * 1000) {
         showPopup(); // Show the popup if inactive
@@ -65,11 +65,9 @@ const showPopup = () => {
 };
 
 const executeCode = () => {
-    console.log("User is inactive...");
-    window.location.href = '/403';
+    console.warn("User is inactive...");
+    window.location.href = '/403?msg=Automatically+kicked+for+inactivity.';
 };
-
-setInterval(checkInactivity, 1000); // Update every second
 
 // Check if administrator code
 var isTuneAuthenticated = false;
@@ -81,8 +79,13 @@ document.addEventListener('DOMContentLoaded', () => {
 function checkAdminMode() {
     const bodyText = document.body.textContent || document.body.innerText;
     isTuneAuthenticated = bodyText.includes("You are logged in as an administrator.") || bodyText.includes("You are logged in as an adminstrator.") ||bodyText.includes("You are logged in and can control the receiver.");
-    if (isTuneAuthenticated) console.log("Logged in as administrator, Inactivity Monitor plugin inactive.");
+    if (isTuneAuthenticated) {
+      clearInterval(intervalInactivity);
+      console.log("Logged in as administrator, Inactivity Monitor plugin inactive.");
+    }
 }
+
+const intervalInactivity = setInterval(checkInactivity, 1000); // Update every second
 
 /*
     Themed Popups v1.1.1 by AAD
