@@ -5,11 +5,11 @@
 
 (() => {
 
-//////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
 let inactivityLimit = 30; // minutes
 let popupWaitTime = 120; // seconds
-let enableToasts = true;                  // Webserver toast popups    
+let enableToasts = true;                  // Webserver toast notifications    
 let resetTimerOnMouseMove = true;         // Mouse movement (within webserver webpage only)
 let resetTimerOnMouseClick = true;        // Mouse click
 let resetTimerOnMouseScroll = true;       // Mouse scroll wheel
@@ -18,11 +18,12 @@ let resetTimerOnPageScroll = true;        // Webpage scrolling
 let resetTimerOnWindowFocus = true;       // Window focus
 let resetTimerOnFrequencyChange = true;   // Command sent to tuner
 
-//////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // Initial variable settings
 let toastWarningPercentage = Math.floor((inactivityLimit * 60) * 0.9); // Toast warning popup at 90% idle limit
 let inactivityTime = 0;
+let consoleDebug = false;
 let popupDisplayed = false;
 let popupTimeout;
 
@@ -47,7 +48,7 @@ if (resetTimerOnFrequencyChange) {
 
 const checkInactivity = () => {
     inactivityTime += 1000; // Increment inactivity by 1 second
-    //console.log(inactivityTime / 1000, 'second(s)');
+    if (consoleDebug) console.log(`Inactivity Monitor idle for ${inactivityTime / 1000} second(s)`);
     if ((inactivityTime / 1000) === toastWarningPercentage && typeof sendToast === 'function' && enableToasts) {
         setTimeout(function() {
             sendToast('warning', 'Inactivity Monitor', `You are currently idle!`, false, false);
@@ -87,17 +88,43 @@ function checkAdminMode() {
     const bodyText = document.body.textContent || document.body.innerText;
     isTuneAuthenticated = bodyText.includes("You are logged in as an administrator.") || bodyText.includes("You are logged in as an adminstrator.") ||bodyText.includes("You are logged in and can control the receiver.");
     if (isTuneAuthenticated) {
-      cancelTimer("Logged in as administrator, Inactivity Monitor plugin inactive.");
-      setTimeout(function() {
-          if (typeof sendToast === 'function' && enableToasts) {
-            sendToast('info', 'Inactivity Monitor', `You are logged in and whitelisted, enjoy!`, false, false);
-          }
-      }, 400);
+      cancelTimer(`Inactivity Monitor detected administrator logged in, plugin inactive.`, `You are logged in and whitelisted, enjoy!`);
     }
 }
 
-function cancelTimer(reason) {
+// Wait until sendToast has been defined
+let toastQueue = [];
+let toastTimeout;
+const toastMaxWaitTime = 5000;
+
+// Function to process toast queue
+function processToastQueue() {
+    if (typeof sendToast === 'function') {
+        while (toastQueue.length) sendToast(...toastQueue.shift());
+        clearTimeout(toastTimeout);
+        toastQueue = []; // Clear any remaining items
+    }
+}
+
+// Function to cancel the timer
+function cancelTimer(reason, reasonToast) {
     clearInterval(intervalInactivity);
+
+    if (typeof sendToast === 'function' && enableToasts) {
+        sendToast('info', 'Inactivity Monitor', reasonToast, false, false);
+    } else {
+        toastQueue.push(['info', 'Inactivity Monitor', reasonToast, false, false]);
+
+        // Start timeout only once
+        if (!toastTimeout) {
+            toastTimeout = setTimeout(() => {
+                toastQueue = []; // Clear queue if timeout reached
+                console.warn('Inactivity Monitor toast notifications not ready.');
+            }, toastMaxWaitTime);
+            setInterval(processToastQueue, 100); // Check periodically for sendToast
+        }
+    }
+
     console.log(reason);
 }
 
@@ -130,38 +157,28 @@ async function setupSendSocket() {
                 .then(response => response.json())
                 .then(data => {
                     if (data.isWhitelisted) {
-                        cancelTimer("IP address is whitelisted, Inactivity Monitor plugin inactive.");
-                        if (typeof sendToast === 'function' && enableToasts) {
-                            setTimeout(function() {
-                                sendToast('info', 'Inactivity Monitor', `IP address whitelisted, enjoy!`, false, false);
-                            }, 400);
-                        }
+                        cancelTimer(`Inactivity Monitor IP address is whitelisted, plugin inactive.`, `IP address whitelisted, enjoy!`);
                     }
+                    // Close WebSocket after receiving response
+                    console.log("Inactivity Monitor IP address validated, WebSocket no longer required, closing connection.");
+                    wsSendSocket.close();
                 })
-                .catch(error => console.error('Failed to validate IP address:', error));
+                .catch(error => {
+                    console.error('Inactivity Monitor WebSocket failed to validate IP address:', error);
+                    wsSendSocket.close();
+                });
             };
 
-            // Handle server responses
-            wsSendSocket.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                if (data.type === 'inactivity-monitor-plugin-validate-ip-response') {
-                    if (data.isWhitelisted) {
-                        cancelTimer("IP address is whitelisted, Inactivity Monitor plugin inactive.");
-                    }
-                }
+            wsSendSocket.onerror = (error) => {
+                console.error("Inactivity Monitor WebSocket error:", error);
+                setTimeout(setupSendSocket, 10000); // Retry WebSocket setup after 10 seconds
             };
 
             wsSendSocket.onclose = () => {
-                setTimeout(function() {
-                    console.log("WebSocket closed. Reconnecting in 5 seconds...");
-                }, 1000);
-                setTimeout(setupSendSocket, 10000);
             };
         } catch (error) {
-            setTimeout(function() {
-                console.error("Failed to setup WebSocket:", error);
-            }, 1000);
-            setTimeout(setupSendSocket, 10000);
+            console.error("Inactivity Monitor WebSocket failed to setup WebSocket:", error);
+            setTimeout(setupSendSocket, 10000); // Retry WebSocket setup after 10 seconds
         }
     }
 }
@@ -275,7 +292,7 @@ function closePopup(event) {
         popup.remove();
         blurBackground(false);
     }, 300); // Remove after fade-out transition
-    console.log("User active, popup closed...");
+    console.log("Inactivity Monitor popup closed, user active.");
 
     // Reset if popup is closed
     clearTimeout(popupTimeout);

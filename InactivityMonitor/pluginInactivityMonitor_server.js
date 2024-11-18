@@ -1,6 +1,6 @@
 /*
     Inactivity Monitor v1.1.0 by AAD
-    Server-side
+    Server-side code
 */
 
 // Library imports
@@ -69,7 +69,7 @@ function checkConfigFile() {
         logInfo("Inactivity Monitor: Creating default InactivityMonitor.json file...");
         // Create the JSON file with default content and custom formatting
         const defaultConfig = {
-            whitelistedIps: ["127.0.0.1", "192.168.1.1", "::ffff:127.0.0.1", "::ffff:192.168.1.1"]
+            whitelistedIps: ["192.168.1.1", "::ffff:192.168.1.1"]
         };
 
         // Manually format the JSON with the desired structure
