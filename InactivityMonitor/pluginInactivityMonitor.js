@@ -113,7 +113,7 @@ function cancelTimer(reason, reasonToast) {
     if (typeof sendToast === 'function' && enableToasts) {
         sendToast('info', 'Inactivity Monitor', reasonToast, false, false);
     } else {
-        toastQueue.push(['info', 'Inactivity Monitor', reasonToast, false, false]);
+        if (enableToasts) toastQueue.push(['info', 'Inactivity Monitor', reasonToast, false, false]);
 
         // Start timeout only once
         if (!toastTimeout) {
