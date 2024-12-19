@@ -106,9 +106,14 @@ function processToastQueue() {
     }
 }
 
+const intervalInactivity = setInterval(checkInactivity, 1000); // Update every second
+
 // Function to cancel the timer
 function cancelTimer(reason, reasonToast) {
     clearInterval(intervalInactivity);
+    setTimeout(() => {
+        clearInterval(intervalInactivity);
+    }, 1000);
 
     if (typeof sendToast === 'function' && enableToasts) {
         sendToast('info', 'Inactivity Monitor', reasonToast, false, false);
@@ -127,8 +132,6 @@ function cancelTimer(reason, reasonToast) {
 
     console.log(reason);
 }
-
-const intervalInactivity = setInterval(checkInactivity, 1000); // Update every second
 
 // Determine WebSocket URL based on the current page's URL
 const currentURL = new URL(window.location.href);
