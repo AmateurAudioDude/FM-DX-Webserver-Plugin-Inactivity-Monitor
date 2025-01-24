@@ -9,6 +9,7 @@ This plugin monitors for webpage user inactivity over a specified period of time
 * Customise settings in `pluginInactivityMonitor.js`
 * Restart FM-DX Webserver if required
 * Login to Adminstrator Panel and enable plugin
+* Restart FM-DX Webserver again if required
 * Configure `InactivityMonitor.json` for whitelisted IP addresses
 
 **Client-side configuration options found in `pluginInactivityMonitor.js`**   
@@ -16,6 +17,10 @@ This plugin monitors for webpage user inactivity over a specified period of time
 
 IP addresses can be whitelisted inside `InactivityMonitor.json`, located in the `plugins_configs` folder. Changes made to the config file take immediate effect, so there's no need to restart the server after an edit.
 
+
+v1.1.1
+------
+* Added option to include session limit that ignores activity
 
 v1.1.0
 ------
