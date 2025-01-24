@@ -1,5 +1,5 @@
 /*
-    Inactivity Monitor v1.1.0 by AAD
+    Inactivity Monitor v1.1.1 by AAD
     https://github.com/AmateurAudioDude/FM-DX-Webserver-Plugin-Inactivity-Monitor
 */
 
@@ -9,6 +9,7 @@
 
 let inactivityLimit = 30; // minutes
 let popupWaitTime = 120; // seconds
+let sessionLimit = 120; // minutes        // Total session time ignoring activity
 let enableToasts = true;                  // Webserver toast notifications    
 let resetTimerOnMouseMove = true;         // Mouse movement (within webserver webpage only)
 let resetTimerOnMouseClick = true;        // Mouse click
@@ -23,6 +24,7 @@ let resetTimerOnFrequencyChange = true;   // Command sent to tuner
 // Initial variable settings
 let toastWarningPercentage = Math.floor((inactivityLimit * 60) * 0.9); // Toast warning popup at 90% idle limit
 let inactivityTime = 0;
+let sessionTime = 0;
 let consoleDebug = false;
 let popupDisplayed = false;
 let popupTimeout;
@@ -48,7 +50,11 @@ if (resetTimerOnFrequencyChange) {
 
 const checkInactivity = () => {
     inactivityTime += 1000; // Increment inactivity by 1 second
-    if (consoleDebug) console.log(`Inactivity Monitor idle for ${inactivityTime / 1000} second(s)`);
+    sessionTime += 1000; // Increment session by 1 second
+    if (consoleDebug) {
+        console.log(`Inactivity Monitor idle for ${inactivityTime / 1000} second(s)`);
+        if (Number.isInteger(sessionTime / 60000)) console.log(`Inactivity Monitor session running for ${(sessionTime / 1000) / 60} minute(s)`);
+    }
     if ((inactivityTime / 1000) === toastWarningPercentage && typeof sendToast === 'function' && enableToasts) {
         setTimeout(function() {
             sendToast('warning', 'Inactivity Monitor', `You are currently idle!`, false, false);
@@ -56,6 +62,9 @@ const checkInactivity = () => {
     }
     if (inactivityTime >= inactivityLimit * 60 * 1000) {
         showPopup(); // Show the popup if inactive
+    }
+    if (sessionTime >= sessionLimit * 60 * 1000) {
+        executeSessionCode(); // Execute if session limit time exceeded
     }
 };
 
@@ -67,14 +76,19 @@ const showPopup = () => {
 
         // Popup timeout
         popupTimeout = setTimeout(() => {
-            executeCode();
+            executeInactivityCode();
         }, popupWaitTime * 1000);
     }
 };
 
-const executeCode = () => {
+const executeInactivityCode = () => {
     console.warn("User is inactive...");
     window.location.href = '/403?msg=Automatically+kicked+for+inactivity.';
+};
+
+const executeSessionCode = () => {
+    console.warn("User exceeded session limit...");
+    window.location.href = '/403?msg=Automatically+kicked+for+exceeding+session+limit.';
 };
 
 // Check if administrator code
