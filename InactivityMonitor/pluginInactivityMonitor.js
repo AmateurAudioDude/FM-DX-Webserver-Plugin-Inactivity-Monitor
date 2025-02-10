@@ -1,5 +1,5 @@
 /*
-    Inactivity Monitor v1.1.1 by AAD
+    Inactivity Monitor v1.1.2 by AAD
     https://github.com/AmateurAudioDude/FM-DX-Webserver-Plugin-Inactivity-Monitor
 */
 
@@ -204,7 +204,7 @@ async function setupSendSocket() {
 setupSendSocket();
 
 /*
-    Themed Popups v1.1.1 by AAD
+    Themed Popups v1.1.2 by AAD
     https://github.com/AmateurAudioDude/FM-DX-Webserver-Plugin-Themed-Popups
 */
 
@@ -214,7 +214,7 @@ document.addEventListener('DOMContentLoaded', () => {
     var styleElement = document.createElement('style');
     var cssCodeThemedPopups = `
     /* Themed Popups CSS */
-    .popup {
+    .popup-plugin {
         position: fixed;
         top: 50%;
         left: 50%;
@@ -229,15 +229,15 @@ document.addEventListener('DOMContentLoaded', () => {
         z-index: 9999;
     }
 
-    .popup-content {
+    .popup-plugin-content {
         text-align: center;
     }
 
-    .popup button {
+    .popup-plugin button {
         margin-top: 10px;
     }
 
-    .popup.open {
+    .popup-plugin.open {
         opacity: .99;
     }
     `;
@@ -254,11 +254,11 @@ function alert(popupMessage, popupButton) {
     }
     if (!popupOpened) { // Check if a popup is not already open
         popup = document.createElement('div');
-        popup.classList.add('popup');
-        popup.innerHTML = `<div class="popup-content">${popupMessage.replace(/\n/g, '<br>')}<button id="popup-close">${popupButton}</button></div>`;
+        popup.classList.add('popup-plugin');
+        popup.innerHTML = `<div class="popup-plugin-content">${popupMessage.replace(/\n/g, '<br>')}<button id="popup-plugin-close">${popupButton}</button></div>`;
         document.body.appendChild(popup);
 
-        var closeButton = popup.querySelector('#popup-close');
+        var closeButton = popup.querySelector('#popup-plugin-close');
         closeButton.addEventListener('click', closePopup);
 
         popup.addEventListener('click', function(event) {

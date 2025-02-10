@@ -1,5 +1,5 @@
 /*
-    Inactivity Monitor v1.1.1 by AAD
+    Inactivity Monitor v1.1.2 by AAD
     Server-side code
 */
 
