@@ -1,19 +1,17 @@
 /*
-    Inactivity Monitor v1.1.2 by AAD
-    Server-side code
+    Inactivity Monitor v1.1.3 by AAD
+    //// Server-side code ////
 */
 
+const pluginName = "Inactivity Monitor";
+
 // Library imports
-const express = require('express');
 const fs = require('fs');
 const path = require('path');
-const WebSocket = require('ws');
 
 // File imports
 const config = require('./../../config.json');
 const { logInfo, logError } = require('../../server/console');
-const webserverPort = config.webserver.webserverPort || 8080; // Default to port 8080 if not specified
-const externalWsUrl = `ws://127.0.0.1:${webserverPort}`;
 
 // Define variables
 let debounceTimer;
@@ -36,9 +34,35 @@ function customRoute() {
 
         if (pluginHeader === 'InactivityMonitor') {
             const clientIp = req.headers['x-forwarded-for']?.split(',')[0] || req.connection.remoteAddress;
+            const normalizedIp = clientIp?.replace(/^::ffff:/, '');
 
-            // Check if the IP is whitelisted
-            const isWhitelisted = whitelist.includes(clientIp);
+            // Check if IP is whitelisted
+            const isWhitelisted = whitelist.some(whitelistedIp => {
+              const normalizedWhitelistedIp = whitelistedIp.replace(/^::ffff:/, '');
+
+              if (normalizedWhitelistedIp.includes('*')) {
+                // Check if it's an IPv6 address with a wildcard
+                if (normalizedWhitelistedIp.includes(':')) {
+                  // Handle IPv6 address with wildcard
+                  const regexPattern = `^${normalizedWhitelistedIp
+                    .replace(/:/g, '\\:')                       // Escape colons
+                    .replace(/\*/g, '[0-9a-fA-F]{1,4}')         // Replace * with valid IPv6 segment
+                    .replace('::', '(?::[0-9a-fA-F]{0,4})*:?')  // Handle `::` for zero compression
+                  }$`;
+                  const regex = new RegExp(regexPattern, 'i');  // Case-insensitive matching for IPv6
+                  return regex.test(normalizedIp);
+                } else {
+                  // Handle IPv4 address with wildcard
+                  const regexPattern = `^${normalizedWhitelistedIp
+                    .replace(/\./g, '\\.')                                     // Escape dots
+                    .replace(/\*/g, '(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)')  // Replace * with valid IPv4 octet pattern
+                  }$`;
+                  const regex = new RegExp(regexPattern);
+                  return regex.test(normalizedIp);
+                }
+              }
+              return normalizedWhitelistedIp === normalizedIp;
+            });
 
             if (isWhitelisted) {
                 res.json({ isWhitelisted: true });
@@ -50,7 +74,7 @@ function customRoute() {
         }
     });
 
-    logInfo('Inactivity Monitor: Custom route added to endpoints router.');
+    logInfo(`${pluginName}: Custom route added to endpoints router.`);
 }
 
 // Create custom route for IP address
@@ -60,16 +84,16 @@ customRoute();
 function checkConfigFile() {
     // Check if the plugins_configs folder exists
     if (!fs.existsSync(configFolderPath)) {
-        logInfo("Inactivity Monitor: Creating plugins_configs folder...");
+        logInfo(`${pluginName}: Creating plugins_configs folder...`);
         fs.mkdirSync(configFolderPath, { recursive: true }); // Create the folder recursively if needed
     }
 
     // Check if InactivityMonitor.json exists
     if (!fs.existsSync(configFilePath)) {
-        logInfo("Inactivity Monitor: Creating default InactivityMonitor.json file...");
+        logInfo(`${pluginName}: Creating default InactivityMonitor.json file...`);
         // Create the JSON file with default content and custom formatting
         const defaultConfig = {
-            whitelistedIps: ["127.0.0.1", "192.168.1.1", "::ffff:127.0.0.1", "::ffff:192.168.1.1"]
+            whitelistedIps: ["127.0.0.1", "192.168.*.*"]
         };
 
         // Manually format the JSON with the desired structure
@@ -91,9 +115,9 @@ function loadWhitelist(isReloaded) {
         const fileContent = fs.readFileSync(configFilePath, 'utf8');
         const configData = JSON.parse(fileContent);
         whitelist = configData.whitelistedIps || [];
-        logInfo(`Inactivity Monitor whitelist ${isReloaded || ''}loaded:`, whitelist);
+        logInfo(`${pluginName} whitelist ${isReloaded || ''}loaded:`, whitelist);
     } catch (error) {
-        logError("Inactivity Monitor error loading whitelist:", error.message);
+        logError(`${pluginName} error loading whitelist:`, error.message);
     }
 }
 
@@ -109,52 +133,3 @@ fs.watch(configFilePath, (eventType) => {
 
 // Initialise whitelist on server startup
 loadWhitelist();
-
-async function ExtraWebSocket() {
-    if (!extraSocket || extraSocket.readyState === WebSocket.CLOSED) {
-        try {
-            extraSocket = new WebSocket(`${externalWsUrl}/data_plugins`);
-
-            extraSocket.onopen = () => {
-                logInfo(`Inactivity Monitor connected to ${externalWsUrl}/data_plugins`);
-            };
-
-            extraSocket.onerror = (error) => {
-                logError("Inactivity Monitor webSocket error:", error);
-            };
-
-            extraSocket.onclose = () => {
-                logInfo("Inactivity Monitor webSocket closed, reconnecting...");
-                setTimeout(ExtraWebSocket, 10000); // Reconnect after a delay
-            };
-
-            extraSocket.onmessage = (event) => {
-                try {
-                    const message = JSON.parse(event.data);
-
-                    // Validate IP if the message type is 'validate-ip'
-                    if (message.type === 'inactivity-monitor-plugin-validate-ip' && message.ip) {
-                        const isWhitelisted = whitelist.includes(message.ip);
-
-                        // Send validation response back to the client
-                        extraSocket.send(JSON.stringify({
-                            type: 'inactivity-monitor-plugin-validate-ip-response',
-                            ip: message.ip,
-                            isWhitelisted,
-                        }));
-
-                        if (isWhitelisted) logInfo(`Inactivity Monitor: ${message.ip} is whitelisted`);
-                    }
-                } catch (error) {
-                    logError("Inactivity Monitor error processing message:", error);
-                }
-            };
-        } catch (error) {
-            logError("Inactivity Monitor failed to set up WebSocket:", error);
-            setTimeout(ExtraWebSocket, 10000); // Reconnect after failure
-        }
-    }
-}
-
-// Initialise the WebSocket connection
-ExtraWebSocket();

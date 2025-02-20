@@ -1,7 +1,7 @@
 // Plugin configuration, this is used in the administration when plugins are loaded
 var pluginConfig = {
     name: 'Inactivity Monitor',
-    version: '1.1.2',
+    version: '1.1.3',
     author: 'AAD',
     frontEndPath: 'InactivityMonitor/pluginInactivityMonitor.js'
 }
