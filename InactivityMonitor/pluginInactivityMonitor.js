@@ -9,7 +9,7 @@
 
 let inactivityLimit = 30; // minutes
 let popupWaitTime = 120; // seconds
-let sessionLimit = 120; // minutes          // Total session time ignoring activity
+let sessionLimit = 180; // minutes          // Total session time ignoring activity
 let enableToasts = true;                    // Webserver toast notifications
 let enableWhitelistToasts = true;           // Webserver toast notifications for whitelisted IP addresses
 let resetTimerOnMouseMove = true;           // Mouse movement (within webserver webpage only)
@@ -91,7 +91,7 @@ const executeInactivityCode = () => {
 
 const executeSessionCode = () => {
     console.warn("User exceeded session limit...");
-    window.location.href = '/403?msg=Automatically+kicked+for+exceeding+session+limit.';
+    window.location.href = '/403?msg=Automatically+kicked+for+exceeding+session+limit.<br>It+may+be+possible+to+reconnect.';
 };
 
 // Check if administrator code
