@@ -34,7 +34,7 @@ const CHECK_FOR_UPDATES = true;
 let toastWarningPercentage = Math.floor((inactivityLimit * 60) * 0.9); // Toast warning popup at 90% idle limit
 let inactivityTime = 0;
 let sessionTime = 0;
-let consoleDebug = true;
+let consoleDebug = false;
 let popupDisplayed = false;
 let popupTimeout;
 let usersOnline = 0; // Used by WebSocket connection for number of users
