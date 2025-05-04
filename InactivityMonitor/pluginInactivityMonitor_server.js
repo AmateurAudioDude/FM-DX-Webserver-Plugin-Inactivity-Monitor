@@ -115,7 +115,7 @@ function loadWhitelist(isReloaded) {
         const fileContent = fs.readFileSync(configFilePath, 'utf8');
         const configData = JSON.parse(fileContent);
         whitelist = configData.whitelistedIps || [];
-        logInfo(`${pluginName} whitelist ${isReloaded || ''}loaded:`, whitelist);
+        logInfo(`${pluginName} whitelist ${isReloaded || ''}loaded:`, whitelist.join(', '));
     } catch (error) {
         logError(`${pluginName} error loading whitelist:`, error.message);
     }
