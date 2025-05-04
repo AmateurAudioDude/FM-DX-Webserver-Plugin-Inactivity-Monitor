@@ -18,6 +18,10 @@ This plugin monitors for webpage user inactivity over a specified period of time
 IP addresses can be whitelisted inside `InactivityMonitor.json`, located in the `plugins_configs` folder. Changes made to the config file take immediate effect, so there's no need to restart the server after an edit.
 
 
+v1.1.4
+------
+* Added option to halt timer while only one user is connected and resume with two or more users
+
 v1.1.3
 ------
 * Wildcard permitted for whitelisted IP addresses
