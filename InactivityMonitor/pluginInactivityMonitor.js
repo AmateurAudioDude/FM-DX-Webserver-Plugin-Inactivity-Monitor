@@ -26,7 +26,7 @@ let resetTimerOnFrequencyChange = true;     // Command sent to tuner
 const pluginVersion = '1.1.4';
 const pluginName = "Inactivity Monitor";
 const pluginHomepageUrl = "https://github.com/AmateurAudioDude/FM-DX-Webserver-Plugin-Inactivity-Monitor";
-const pluginUpdateUrl = "https://raw.githubusercontent.com/AmateurAudioDude/FM-DX-Webserver-Plugin-Inactivity-Monitor/refs/heads/main/version";
+const pluginUpdateUrl = "https://raw.githubusercontent.com/AmateurAudioDude/FM-DX-Webserver-Plugin-Inactivity-Monitor/refs/heads/main/InactivityMonitor/pluginInactivityMonitor.js";
 const pluginSetupOnlyNotify = true;
 const CHECK_FOR_UPDATES = true;
 
@@ -299,9 +299,23 @@ function checkUpdate(setupOnly, pluginVersion, pluginName, urlUpdateLink, urlFet
             }
 
             const text = await response.text();
-            const firstLine = text.split('\n')[0]; // Extract first line
+            const lines = text.split('\n');
 
-            const version = firstLine;
+            let version;
+
+            if (lines.length > 2) {
+                const versionLine = lines.find(line => line.includes("const pluginVersion =") || line.includes("const plugin_version ="));
+                if (versionLine) {
+                    const match = versionLine.match(/const\s+plugin[_vV]ersion\s*=\s*['"]([^'"]+)['"]/);
+                    if (match) {
+                        version = match[1];
+                    }
+                }
+            }
+
+            if (!version) {
+                version = lines[0]; // Fallback to first line
+            }
 
             return version;
         } catch (error) {
@@ -310,14 +324,13 @@ function checkUpdate(setupOnly, pluginVersion, pluginName, urlUpdateLink, urlFet
         }
     }
 
-
     // Check for updates
     fetchFirstLine().then(newVersion => {
         if (newVersion) {
             if (newVersion !== pluginVersion) {
                 let updateConsoleText = "There is a new version of this plugin available";
                 // Any custom code here
-
+                
                 console.log(`[${pluginName}] ${updateConsoleText}`);
                 setupNotify(pluginVersion, newVersion, pluginName, urlUpdateLink);
             }
