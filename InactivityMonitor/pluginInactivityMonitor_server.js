@@ -3,6 +3,8 @@
     //// Server-side code ////
 */
 
+'use strict';
+
 const pluginName = "Inactivity Monitor";
 
 // Library imports
