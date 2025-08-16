@@ -1,5 +1,5 @@
 /*
-    Inactivity Monitor v1.1.4 by AAD
+    Inactivity Monitor v1.1.5 by AAD
     https://github.com/AmateurAudioDude/FM-DX-Webserver-Plugin-Inactivity-Monitor
 */
 
@@ -103,7 +103,30 @@ const executeInactivityCode = () => {
 
 const executeSessionCode = () => {
     console.warn("User exceeded session limit...");
-    window.location.href = '/403?msg=Automatically+kicked+for+exceeding+session+limit.<br>It+may+be+possible+to+reconnect.';
+
+    // Temp ban send via HTTP POST
+    fetch('/inactivity-monitor-session-limit', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Plugin-Name': 'InactivityMonitor'
+            },
+            body: JSON.stringify({
+                type: 'sessionLimitExceeded',
+                timestamp: Date.now()
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log(`[${pluginName}] Session limit violation reported to server:`, data);
+        })
+        .catch(error => {
+            console.error(`[${pluginName}] Failed to report session limit violation:`, error);
+        });
+
+    setTimeout(() => {
+        window.location.href = '/403?msg=Automatically+kicked+for+exceeding+session+limit.<br>It+may+be+possible+to+reconnect.';
+    }, 1000);
 };
 
 // Check if administrator code
@@ -111,6 +134,7 @@ var isTuneAuthenticated = false;
 
 document.addEventListener('DOMContentLoaded', () => {
     checkAdminMode();
+    checkTempBan();
 });
 
 function checkAdminMode() {
@@ -121,6 +145,26 @@ function checkAdminMode() {
             cancelTimer(`[${pluginName}] Detected administrator logged in, plugin inactive.`, `You are logged in (and whitelisted), enjoy!`, !enableWhitelistToasts);
         }, 600);
     }
+}
+
+function checkTempBan() {
+    // Check if temporarily banned
+    fetch('/inactivity-monitor-plugin-check-ban', {
+            method: 'GET',
+            headers: {
+                'X-Plugin-Name': 'InactivityMonitor'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.banned) {
+                console.warn(`[${pluginName}] IP is temporarily banned, redirecting...`);
+                window.location.href = '/403?msg=Temporarily+banned+for+exceeding+session+limit.';
+            }
+        })
+        .catch(error => {
+            console.error(`[${pluginName}] Failed to check ban status:`, error);
+        });
 }
 
 // Wait until sendToast has been defined
