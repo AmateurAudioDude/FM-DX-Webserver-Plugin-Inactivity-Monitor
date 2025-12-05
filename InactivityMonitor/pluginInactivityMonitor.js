@@ -98,7 +98,7 @@ const showPopup = () => {
 
 const executeInactivityCode = () => {
     console.warn("User is inactive...");
-    window.location.href = '/403?msg=Automatically+kicked+for+inactivity.';
+    window.location.href = '/403_inactivitymonitor?msg=Automatically+kicked+for+inactivity.';
 };
 
 const executeSessionCode = () => {
@@ -125,7 +125,7 @@ const executeSessionCode = () => {
         });
 
     setTimeout(() => {
-        window.location.href = '/403?msg=Automatically+kicked+for+exceeding+session+limit.<br>It+may+be+possible+to+reconnect.';
+        window.location.href = '/403_inactivitymonitor?msg=Automatically+kicked+for+exceeding+session+limit.<br>It+may+be+possible+to+reconnect.';
     }, 1000);
 };
 
@@ -159,7 +159,7 @@ function checkTempBan() {
         .then(data => {
             if (data.banned) {
                 console.warn(`[${pluginName}] IP is temporarily banned, redirecting...`);
-                window.location.href = '/403?msg=Temporarily+banned+for+exceeding+session+limit.';
+                window.location.href = '/403_inactivitymonitor?msg=Temporarily+banned+for+exceeding+session+limit.';
             }
         })
         .catch(error => {

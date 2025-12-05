@@ -96,6 +96,51 @@ function customRoute() {
         }
     });
 
+    endpointsRouter.get('/403_inactivitymonitor', (req, res) => {
+        res.status(403).send(`<!DOCTYPE html>
+<html>
+<head>
+    <title>Unauthorized - FM-DX Webserver</title>
+    <link href="css/entry.css" type="text/css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" type="text/css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" integrity="sha512-v2CJ7UaYy4JwqLDIrZUI/4hqeoQieOmAZNXBeQyjo21dadnwR+8ZaIJVT8EE2iyI61OV8e6M8PP2/4hpQINQ/g==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body>
+    <div id="wrapper" class="auto">
+        <div class="panel-100 no-bg">
+            <img class="top-10" src="./images/openradio_logo_neutral.png" height="64px">
+            <h2 class="text-monospace text-light text-center">[403]</h2>
+            
+            <div class="panel-100 p-10">
+                <br>
+                <i class="text-big fa-solid fa-exclamation-triangle color-4"></i>
+                <p>
+                    There's a possibility you were kicked by the system.<br>
+                    Please try again later.</p>
+                <b id="message"></b>
+                <script>
+                    $(document).ready(function() {
+                        function getQueryParam(param) {
+                            var urlParams = new URLSearchParams(window.location.search);
+                            return urlParams.get(param);
+                        }
+                        var msg = getQueryParam('msg');
+                        if (msg) {
+                            $('#message').html('<p>' + msg + '</p>');
+                        }
+                      });
+                </script>
+            </div> 
+        </div>
+    </div>
+    <script src="js/settings.js"></script>
+</body>
+</html>
+`);
+    });
+
     logInfo(`${pluginName}: Custom route added to endpoints router.`);
 }
 
