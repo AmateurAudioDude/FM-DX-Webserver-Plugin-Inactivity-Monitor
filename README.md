@@ -18,6 +18,10 @@ This plugin monitors for webpage user inactivity over a specified period of time
 IP addresses can be whitelisted inside `InactivityMonitor.json`, located in the `plugins_configs` folder. Changes made to the config file take immediate effect, so there's no need to restart the server after an edit.
 
 
+v1.2.0
+------
+* Updated to use FM-DX Webserver plugin API
+
 v1.1.5
 ------
 * Added temporary ban option in minutes (in InactivityMonitor.json) for user exceeding `sessionLimit` value

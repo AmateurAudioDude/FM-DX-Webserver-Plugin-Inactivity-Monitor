@@ -1,5 +1,5 @@
 /*
-    Inactivity Monitor v1.1.5 by AAD
+    Inactivity Monitor v1.2.0 by AAD
     https://github.com/AmateurAudioDude/FM-DX-Webserver-Plugin-Inactivity-Monitor
 */
 
@@ -7,25 +7,25 @@
 
 (() => {
 
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-let inactivityLimit = 30; // minutes
-let popupWaitTime = 120; // seconds
-let sessionLimit = 180; // minutes          // Total session time ignoring activity
-let enableToasts = true;                    // Webserver toast notifications
-let enableWhitelistToasts = true;           // Webserver toast notifications for whitelisted IP addresses
-let pauseTimerOnOneUser = false;            // Halt timer while only one user is connected
-let resetTimerOnMouseMove = true;           // Mouse movement (within webserver webpage only)
-let resetTimerOnMouseClick = true;          // Mouse click
-let resetTimerOnMouseScroll = true;         // Mouse scroll wheel
-let resetTimerOnKeyboard = true;            // Keyboard press
-let resetTimerOnPageScroll = true;          // Webpage scrolling
-let resetTimerOnWindowFocus = true;         // Window focus
-let resetTimerOnFrequencyChange = true;     // Command sent to tuner
+let POPUP_INACTIVITY_LIMIT = 30; // minutes     // For popup only, set 'inactivityLimit' in configuration file
+let POPUP_WAIT_TIME = null; // seconds          // Set 'inactivityLimit' in configuration file, e.g. two minutes more than 'POPUP_INACTIVITY_LIMIT'
+let SESSION_LIMIT = null; // minutes            // Set in configuration file
+let ENABLE_TOASTS = true;                       // Webserver toast notifications
+let ENABLE_WHITELIST_TOASTS = true;             // Webserver toast notifications for whitelisted IP addresses
+let PAUSE_TIMER_ON_ONE_USER = false;            // Halt timer while only one user is connected
+let RESET_TIMER_ON_MOUSE_MOVE = true;           // Mouse movement (within webserver webpage only)
+let RESET_TIMER_ON_MOUSE_CLICK = true;          // Mouse click
+let RESET_TIMER_ON_MOUSE_SCROLL = true;         // Mouse scroll wheel
+let RESET_TIMER_ON_KEYBOARD = true;             // Keyboard press
+let RESET_TIMER_ON_PAGE_SCROLL = true;          // Webpage scrolling
+let RESET_TIMER_ON_WINDOW_FOCUS = true;         // Window focus
+let RESET_TIMER_ON_FREQUENCY_CHANGE = true;     // Command sent to tuner
 
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-const pluginVersion = '1.1.5';
+const pluginVersion = '1.2.0';
 const pluginName = "Inactivity Monitor";
 const pluginHomepageUrl = "https://github.com/AmateurAudioDude/FM-DX-Webserver-Plugin-Inactivity-Monitor";
 const pluginUpdateUrl = "https://raw.githubusercontent.com/AmateurAudioDude/FM-DX-Webserver-Plugin-Inactivity-Monitor/refs/heads/main/InactivityMonitor/pluginInactivityMonitor.js";
@@ -33,103 +33,176 @@ const pluginSetupOnlyNotify = true;
 const CHECK_FOR_UPDATES = true;
 
 // Initial variable settings
-let toastWarningPercentage = Math.floor((inactivityLimit * 60) * 0.9); // Toast warning popup at 90% idle limit
+let toastWarningPercentage = Math.floor((POPUP_INACTIVITY_LIMIT * 60) * 0.9); // Toast warning at 90%
 let inactivityTime = 0;
-let sessionTime = 0;
 let consoleDebug = false;
 let popupDisplayed = false;
 let popupTimeout;
-let usersOnline = 0; // Used by WebSocket connection for number of users
+let usersOnline = 0;
 
 // Event listeners for user activity
 const resetTimer = () => {
-    if (!popupDisplayed) inactivityTime = 0;
+    if (!popupDisplayed) {
+        sendActivityPing();
+    }
 };
 
 // Listen for mouse events
-if (resetTimerOnMouseMove) document.addEventListener('mousemove', resetTimer);
-if (resetTimerOnMouseClick) document.addEventListener('mousedown', (event) => { resetTimer(); });
-if (resetTimerOnKeyboard) document.addEventListener('keydown', resetTimer);
-if (resetTimerOnPageScroll) document.addEventListener('scroll', resetTimer);
-if (resetTimerOnWindowFocus) window.addEventListener('focus', resetTimer);
-if (resetTimerOnMouseScroll) document.addEventListener('wheel', (event) => { resetTimer(); });
+if (RESET_TIMER_ON_MOUSE_MOVE) document.addEventListener('mousemove', resetTimer);
+if (RESET_TIMER_ON_MOUSE_CLICK) document.addEventListener('mousedown', resetTimer);
+if (RESET_TIMER_ON_KEYBOARD) document.addEventListener('keydown', resetTimer);
+if (RESET_TIMER_ON_PAGE_SCROLL) document.addEventListener('scroll', resetTimer);
+if (RESET_TIMER_ON_WINDOW_FOCUS) window.addEventListener('focus', resetTimer);
+if (RESET_TIMER_ON_MOUSE_SCROLL) document.addEventListener('wheel', resetTimer);
 
 // Listen for socket commands
-if (resetTimerOnFrequencyChange && window.socket) {
-    const originalSend = socket.send.bind(socket);
-    socket.send = function(...args) { resetTimer(); return originalSend(...args); };
+if (RESET_TIMER_ON_FREQUENCY_CHANGE && !window._inactivitySendWrapped) {
+    const setupSendWrapper = () => {
+        if (!window.socket) return;
+
+        const originalSend = window.socket.send.bind(window.socket);
+
+        window.socket.send = function(...args) {
+            // Don't trigger resetTimer if sending activity ping
+            if (!args[0] || !args[0].includes('"type":"activityPing"')) {
+                resetTimer();
+            }
+            return originalSend(...args);
+        };
+
+        window._inactivitySendWrapped = true;
+    };
+
+    if (window.socket) {
+        setupSendWrapper();
+    } else if (window.socketPromise) {
+        window.socketPromise.then(setupSendWrapper);
+    }
 }
 
 const checkInactivity = () => {
     if (window.location.pathname === '/setup') return;
-    if (!pauseTimerOnOneUser || usersOnline > 1) {
-        inactivityTime += 1000; // Increment inactivity by 1 second
-        sessionTime += 1000; // Increment session by 1 second
+
+    if (!PAUSE_TIMER_ON_ONE_USER || usersOnline > 1) {
+        inactivityTime += 1000; // 1 second
     }
+
     if (consoleDebug) {
-        console.log(`[${pluginName}] Idle for ${inactivityTime / 1000} seconds, ${usersOnline} users online`);
-        if (Number.isInteger(sessionTime / 60000) && sessionTime) console.log(`[${pluginName}] session running for ${(sessionTime / 1000) / 60} minutes`);
+        console.log(`[${pluginName}] Idle for ${inactivityTime / 1000} seconds, ${usersOnline} user${usersOnline !== 1 ? 's' : ''}, online`);
     }
-    if (usersOnline > 1 && (inactivityTime / 1000) === toastWarningPercentage && typeof sendToast === 'function' && enableToasts) {
-        setTimeout(function() {
+
+    // Show warning toast at 90% of limit
+    if (usersOnline >= 1 && (inactivityTime / 1000) === toastWarningPercentage && typeof sendToast === 'function' && ENABLE_TOASTS) {
+        setTimeout(() => {
             sendToast('warning', 'Inactivity Monitor', `You are currently idle!`, false, false);
         }, 400);
     }
-    if (inactivityTime >= inactivityLimit * 60 * 1000) {
-        showPopup(); // Show the popup if inactive
-    }
-    if (sessionTime >= sessionLimit * 60 * 1000) {
-        executeSessionCode(); // Execute if session limit time exceeded
+
+    // Show popup when limit reached
+    if (inactivityTime >= POPUP_INACTIVITY_LIMIT * 60 * 1000) {
+        showPopup();
     }
 };
 
 // Display popup
-const showPopup = () => {
+function showPopup() {
     if (!popupDisplayed) {
-        popupDisplayed = true; // Prevent multiple popups
-        const userResponse = alert("Are you still there?", "Yes");
+        popupDisplayed = true;
+        alert("Are you still there?", "Yes");
 
-        // Popup timeout
+        // Server kick if no response
+        /*
         popupTimeout = setTimeout(() => {
-            executeInactivityCode();
-        }, popupWaitTime * 1000);
+            console.warn(`[${pluginName}] User did not respond to inactivity popup`);
+            // Server will handle kick
+        }, POPUP_WAIT_TIME * 1000);
+        */
     }
-};
+}
 
-const executeInactivityCode = () => {
-    console.warn("User is inactive...");
-    window.location.href = '/403_inactivitymonitor?msg=Automatically+kicked+for+inactivity.';
-};
+// --------------------------
+// MAIN WebSocket
+// --------------------------
+if (!window.mainSocketId) {
+    // Generate a unique ID for this client (simple timestamp + random)
+    window.mainSocketId = `client_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+}
 
-const executeSessionCode = () => {
-    console.warn("User exceeded session limit...");
+let socket = window.socket; // your main WS
+let socketPromise = window.socketPromise; // your existing promise
 
-    // Temp ban send via HTTP POST
-    fetch('/inactivity-monitor-session-limit', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Plugin-Name': 'InactivityMonitor'
-            },
-            body: JSON.stringify({
-                type: 'sessionLimitExceeded',
-                timestamp: Date.now()
-            })
-        })
-        .then(response => response.json())
-        .then(data => {
-            console.log(`[${pluginName}] Session limit violation reported to server:`, data);
-        })
-        .catch(error => {
-            console.error(`[${pluginName}] Failed to report session limit violation:`, error);
-        });
+// --------------------------
+// PLUGIN WebSocket
+// --------------------------
+let pluginSocket = null;
+let pluginSocketResolve;
+let pluginSocketPromise = new Promise((resolve) => { pluginSocketResolve = resolve; });
 
-    setTimeout(() => {
-        window.location.href = '/403_inactivitymonitor?msg=Automatically+kicked+for+exceeding+session+limit.<br>It+may+be+possible+to+reconnect.';
-    }, 1000);
-};
+function connectPluginSocket() {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/data_plugins`;
+    pluginSocket = new WebSocket(wsUrl);
 
-// Check if administrator code
+    pluginSocket.onopen = () => {
+        console.log(`[${pluginName}] Connected to plugin WebSocket`);
+
+        // Register this client with its unique main WS ID
+        pluginSocket.send(JSON.stringify({
+            type: 'registerClient',
+            clientId: window.mainSocketId
+        }));
+
+        pluginSocketResolve(pluginSocket);
+    };
+
+    pluginSocket.onmessage = (event) => {
+        // ignore
+    };
+
+    pluginSocket.onclose = () => {
+        setTimeout(() => {
+            console.log(`[${pluginName}] Plugin WS disconnected, reconnecting in 5 seconds...`);
+        }, 1000);
+        setTimeout(connectPluginSocket, 5000);
+    };
+
+    pluginSocket.onerror = (err) => {
+        console.error(`[${pluginName}] Plugin WS error:`, err);
+    };
+}
+
+connectPluginSocket();
+
+// --------------------------
+// Activity ping
+// --------------------------
+let _lastActivityPing = 0;
+const ACTIVITY_PING_INTERVAL = 5 * 1000;
+
+function sendActivityPing(isPopup = false) {
+    pluginSocketPromise.then((socket) => {
+        if (!socket || socket.readyState !== WebSocket.OPEN) return;
+
+        const now = Date.now();
+        if (!isPopup && now - _lastActivityPing < ACTIVITY_PING_INTERVAL) return;
+
+        // Reset local timer
+        inactivityTime = 0;
+
+        try {
+            socket.send(JSON.stringify({
+                type: 'activityPing',
+                clientId: window.mainSocketId
+            }));
+            _lastActivityPing = now;
+            console.log(`[${pluginName}] Ping`);
+        } catch (err) {
+            console.error(`[${pluginName}] Failed to send activity ping:`, err);
+        }
+    });
+}
+
+// Check if administrator
 var isTuneAuthenticated = false;
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -139,10 +212,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function checkAdminMode() {
     const bodyText = document.body.textContent || document.body.innerText;
-    isTuneAuthenticated = bodyText.includes("You are logged in as an administrator.") || bodyText.includes("You are logged in as an adminstrator.") || bodyText.includes("You are logged in and can control the receiver.");
+    isTuneAuthenticated = bodyText.includes("You are logged in as an administrator.") ||
+        bodyText.includes("You are logged in as an adminstrator.") ||
+        bodyText.includes("You are logged in and can control the receiver.");
+
     if (isTuneAuthenticated) {
-        setTimeout(function() {
-            cancelTimer(`[${pluginName}] Detected administrator logged in, plugin inactive.`, `You are logged in (and whitelisted), enjoy!`, !enableWhitelistToasts);
+        setTimeout(() => {
+            cancelTimer(`[${pluginName}] Detected administrator logged in, plugin inactive.`,
+                `You are logged in (and whitelisted), enjoy!`, !ENABLE_WHITELIST_TOASTS);
         }, 600);
     }
 }
@@ -167,20 +244,25 @@ function checkTempBan() {
         });
 }
 
-// Wait until sendToast has been defined
-let toastQueue = [];
-let toastQueueInterval;
-let toastTimeout;
-const toastMaxWaitTime = 5000;
-
-// Function to process toast queue
-function processToastQueue() {
-    if (typeof sendToast === 'function') {
-        while (toastQueue.length) sendToast(...toastQueue.shift());
-        clearTimeout(toastTimeout);
-        toastQueue = []; // Clear any remaining items
-    }
-}
+// Check if whitelisted
+fetch('/inactivity-monitor-plugin-validate-ip', {
+        method: 'GET',
+        headers: {
+            'X-Plugin-Name': 'InactivityMonitor'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.isWhitelisted) {
+            setTimeout(() => {
+                cancelTimer(`[${pluginName}] IP address validated and whitelisted.`,
+                    `IP address whitelisted, enjoy!`, !ENABLE_WHITELIST_TOASTS);
+            }, 800);
+        }
+    })
+    .catch(error => {
+        console.error(`[${pluginName}] Failed to validate IP:`, error);
+    });
 
 const intervalInactivity = setInterval(checkInactivity, 1000); // Update every second
 
@@ -191,84 +273,12 @@ function cancelTimer(reason, reasonToast, noDisplay) {
         clearInterval(intervalInactivity);
     }, 1000);
 
-    if (typeof sendToast === 'function' && enableToasts) {
-        if (!noDisplay) sendToast('info', 'Inactivity Monitor', reasonToast, false, false);
-    } else {
-        if (enableToasts) toastQueue.push(['info', 'Inactivity Monitor', reasonToast, false, false]);
-
-        // Start timeout only once
-        if (!toastTimeout) {
-            toastTimeout = setTimeout(() => {
-                toastQueue = []; // Clear queue if timeout reached
-                console.warn(`[${pluginName}] toast notifications not ready.`);
-            }, toastMaxWaitTime);
-            toastQueueInterval = setInterval(processToastQueue, 200); // Check periodically for sendToast
-        }
+    if (typeof sendToast === 'function' && ENABLE_TOASTS && !noDisplay) {
+        sendToast('info', 'Inactivity Monitor', reasonToast, false, false);
     }
-
-    setTimeout(() => {
-        clearInterval(toastQueueInterval);
-    }, toastMaxWaitTime);
 
     console.log(reason);
 }
-
-// Determine WebSocket URL based on the current page's URL
-const currentURL = new URL(window.location.href);
-const WebserverURL = currentURL.hostname;
-const WebserverPath = currentURL.pathname.replace(/setup/g, '');
-const WebserverPORT = currentURL.port || (currentURL.protocol === 'https:' ? '443' : '80');
-const protocol = currentURL.protocol === 'https:' ? 'wss:' : 'ws:';
-const WEBSOCKET_URL = `${protocol}//${WebserverURL}:${WebserverPORT}${WebserverPath}data_plugins`;
-
-let wsSendSocket;
-
-// Function to setup the WebSocket connection
-async function setupSendSocket() {
-    if (!wsSendSocket || wsSendSocket.readyState === WebSocket.CLOSED) {
-        try {
-            wsSendSocket = new WebSocket(WEBSOCKET_URL);
-
-            wsSendSocket.onopen = () => {
-                // Fetch IP address whitelisting status from the server
-                fetch('/inactivity-monitor-plugin-validate-ip', {
-                        method: 'GET',
-                        headers: {
-                            'X-Plugin-Name': 'InactivityMonitor'
-                        }
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.isWhitelisted) {
-                            setTimeout(function() {
-                                cancelTimer(`[${pluginName}] IP address validated and whitelisted, closing WebSocket connection.`, `IP address whitelisted, enjoy!`, !enableWhitelistToasts);
-                            }, 800);
-                        }
-                        // Close WebSocket after receiving response
-                        if (!data.isWhitelisted) console.log(`[${pluginName}] IP address validated (and not whitelisted), closing WebSocket connection.`);
-                        wsSendSocket.close();
-                    })
-                    .catch(error => {
-                        console.error(`[${pluginName}] WebSocket failed to validate IP address:`, error);
-                        wsSendSocket.close();
-                    });
-            };
-
-            wsSendSocket.onerror = (error) => {
-                console.error(`[${pluginName}] WebSocket error:`, error);
-                setTimeout(setupSendSocket, 10000); // Retry WebSocket setup after 10 seconds
-            };
-
-            wsSendSocket.onclose = () => {};
-        } catch (error) {
-            console.error(`[${pluginName}] WebSocket failed to setup WebSocket:`, error);
-            setTimeout(setupSendSocket, 10000); // Retry WebSocket setup after 10 seconds
-        }
-    }
-}
-
-// Initialise WebSocket connection
-setupSendSocket();
 
 // Setup WebSocket connection for number of users
 let lastProcessedTime = 0;
@@ -282,25 +292,40 @@ window.onload = function() {
 };
 
 function connectWebSocket() {
-    if (!window.socket) return;
+    if (!window.socketPromise) return;
 
-    if (socket.readyState === WebSocket.OPEN) {
-        reconnectAttempts = 0;
-    }
+    // Wait for the socket to be initialized
+    window.socketPromise.then(() => {
+        if (!window.socket) return;
 
-    socket.addEventListener('message', (event) => {
-        handle_INACTIVITY_MONITOR(event);
-    });
+        const socket = window.socket;
 
-    socket.addEventListener('close', () => {
-        setTimeout(() => {
-            console.log(`[${pluginName}] WebSocket closed. Attempting to reconnect...`);
-        }, 1000);
-        attemptReconnect();
-    });
+        // Reset reconnect attempts if already open
+        if (socket.readyState === WebSocket.OPEN) {
+            reconnectAttempts = 0;
+        }
 
-    socket.addEventListener('error', (err) => {
-        attemptReconnect();
+        // Message handler
+        socket.addEventListener('message', (event) => {
+            handle_INACTIVITY_MONITOR(event);
+        });
+
+        // Close handler
+        socket.addEventListener('close', () => {
+            setTimeout(() => {
+                console.log(`[${pluginName}] WebSocket closed. Attempting to reconnect...`);
+            }, 1000);
+            attemptReconnect();
+        });
+
+        // Error handler
+        socket.addEventListener('error', (err) => {
+            attemptReconnect();
+        });
+
+        console.log(`[${pluginName}] WebSocket connected and listeners set up.`);
+    }).catch(err => {
+        console.error(`[${pluginName}] Failed to connect WebSocket:`, err);
     });
 }
 
@@ -330,97 +355,71 @@ function handle_INACTIVITY_MONITOR(event) {
 
 connectWebSocket();
 
-// Function for update notification in /setup
-function checkUpdate(setupOnly, pluginVersion, pluginName, urlUpdateLink, urlFetchLink) {
-    if (setupOnly && window.location.pathname !== '/setup') return;
+// Listen for WebSocket close events
+(function() {
+    function registerWsCloseHandler(pluginName, redirectUrl, defaultMsg, reasonCode) {
+        if (!window._wsClosePlugins) window._wsClosePlugins = new Map();
+        if (window._wsClosePlugins.has(reasonCode)) return; // Already registered
 
-    // Function to check for updates
-    async function fetchFirstLine() {
-        const urlCheckForUpdate = urlFetchLink;
+        window._wsClosePlugins.set(reasonCode, {
+            pluginName,
+            redirectUrl,
+            defaultMsg
+        });
 
-        try {
-            const response = await fetch(urlCheckForUpdate);
-            if (!response.ok) {
-                throw new Error(`[${pluginName}] update check HTTP error! status: ${response.status}`);
-            }
-
-            const text = await response.text();
-            const lines = text.split('\n');
-
-            let version;
-
-            if (lines.length > 2) {
-                const versionLine = lines.find(line => line.includes("const pluginVersion =") || line.includes("const plugin_version ="));
-                if (versionLine) {
-                    const match = versionLine.match(/const\s+plugin[_vV]ersion\s*=\s*['"]([^'"]+)['"]/);
-                    if (match) {
-                        version = match[1];
-                    }
+        if (!window._wsCloseWrapped) {
+            const originalOnClose = window.socket?.onclose;
+            window.socket.onclose = function(event) {
+                if (event.code !== 1008) {
+                    if (originalOnClose) originalOnClose.call(this, event);
+                    return;
                 }
-            }
 
-            if (!version) {
-                version = lines[0]; // Fallback to first line
-            }
+                let parsed;
+                try {
+                    parsed = JSON.parse(event.reason);
+                } catch {
+                    parsed = { code: null, msg: event.reason };
+                }
 
-            return version;
-        } catch (error) {
-            console.error(`[${pluginName}] error fetching file:`, error);
-            return null;
+                const info = window._wsClosePlugins.get(parsed.code);
+                if (info) {
+                    console.log(`[${info.pluginName}] Kicked by server: ${parsed.msg}`);
+                    const redirect = () => {
+                        const msg = encodeURIComponent(parsed.msg || info.defaultMsg);
+                        window.location.href = info.redirectUrl + '?msg=' + msg;
+                    };
+                    redirect();
+                    setInterval(redirect, 1000);
+                }
+
+                if (originalOnClose) originalOnClose.call(this, event);
+            };
+            window._wsCloseWrapped = true;
         }
     }
 
-    // Check for updates
-    fetchFirstLine().then(newVersion => {
-        if (newVersion) {
-            if (newVersion !== pluginVersion) {
-                let updateConsoleText = "There is a new version of this plugin available";
-                // Any custom code here
-                
-                console.log(`[${pluginName}] ${updateConsoleText}`);
-                setupNotify(pluginVersion, newVersion, pluginName, urlUpdateLink);
-            }
-        }
-    });
+    window.registerWsCloseHandler = registerWsCloseHandler;
+})();
 
-    function setupNotify(pluginVersion, newVersion, pluginName, urlUpdateLink) {
-        if (window.location.pathname === '/setup') {
-          const pluginSettings = document.getElementById('plugin-settings');
-          if (pluginSettings) {
-            const currentText = pluginSettings.textContent.trim();
-            const newText = `<a href="${urlUpdateLink}" target="_blank">[${pluginName}] Update available: ${pluginVersion} --> ${newVersion}</a><br>`;
+(function() {
+    const setup = () => {
+        window.registerWsCloseHandler(
+            'Inactivity Monitor',
+            '/403_inactivitymonitor',
+            'Kicked for inactivity',
+            'INACTIVITY_MONITOR'
+        );
+    };
 
-            if (currentText === 'No plugin settings are available.') {
-              pluginSettings.innerHTML = newText;
-            } else {
-              pluginSettings.innerHTML += ' ' + newText;
-            }
-          }
+    if (window.socket) setup();
+    else if (window.socketPromise) window.socketPromise.then(setup);
+})();
 
-          const updateIcon = document.querySelector('.wrapper-outer #navigation .sidenav-content .fa-puzzle-piece') || document.querySelector('.wrapper-outer .sidenav-content') || document.querySelector('.sidenav-content');
-
-          const redDot = document.createElement('span');
-          redDot.style.display = 'block';
-          redDot.style.width = '12px';
-          redDot.style.height = '12px';
-          redDot.style.borderRadius = '50%';
-          redDot.style.backgroundColor = '#FE0830' || 'var(--color-main-bright)'; // Prefer set colour over theme colour
-          redDot.style.marginLeft = '82px';
-          redDot.style.marginTop = '-12px';
-
-          updateIcon.appendChild(redDot);
-        }
-    }
-}
-
-if (CHECK_FOR_UPDATES) {
-    checkUpdate(
-        pluginSetupOnlyNotify,  // Check only in /setup
-        pluginVersion,          // Plugin version (string)
-        pluginName,             // Plugin name
-        pluginHomepageUrl,      // Update link URL
-        pluginUpdateUrl,        // Update check URL
-    );
+// Function for update notification in /setup
+if (window.location.pathname === '/setup') {
+    // Function for update notification in /setup
+    function checkUpdate(e,n,t,o){if(e&&"/setup"!==location.pathname)return;let i="undefined"!=typeof pluginVersion?pluginVersion:"undefined"!=typeof plugin_version?plugin_version:"undefined"!=typeof PLUGIN_VERSION?PLUGIN_VERSION:"Unknown";async function r(){try{let e=await fetch(o);if(!e.ok)throw new Error("["+n+"] update check HTTP error! status: "+e.status);let t=(await e.text()).split("\n"),r;if(t.length>2){let e=t.find(e=>e.includes("const pluginVersion =")||e.includes("const plugin_version =")||e.includes("const PLUGIN_VERSION ="));if(e){let n=e.match(/const\s+(?:pluginVersion|plugin_version|PLUGIN_VERSION)\s*=\s*['"]([^'"]+)['"]/);n&&(r=n[1])}}return r||(r=/^\d/.test(t[0].trim())?t[0].trim():"Unknown"),r}catch(e){return console.error("["+n+"] error fetching file:",e),null}}r().then(e=>{e&&e!==i&&(console.log("["+n+"] There is a new version of this plugin available"),function(e,n,t,o){if("/setup"===location.pathname){let i=document.getElementById("plugin-settings");if(i){let r=i.textContent.trim(),l=`<a href="${o}" target="_blank">[${t}] Update available: ${e} --> ${n}</a><br>`;i.innerHTML="No plugin settings are available."===r?l:i.innerHTML+" "+l}let a=document.querySelector(".wrapper-outer #navigation .sidenav-content .fa-puzzle-piece")||document.querySelector(".wrapper-outer .sidenav-content")||document.querySelector(".sidenav-content"),d=document.createElement("span");d.style.cssText="display:block;width:12px;height:12px;border-radius:50%;background:#FE0830;margin-left:82px;margin-top:-12px",a.appendChild(d)}}(i,e,n,t))})}CHECK_FOR_UPDATES&&checkUpdate(pluginSetupOnlyNotify,pluginName,pluginHomepageUrl,pluginUpdateUrl);
 }
 
 /*
@@ -428,6 +427,30 @@ if (CHECK_FOR_UPDATES) {
     https://github.com/AmateurAudioDude/FM-DX-Webserver-Plugin-Themed-Popups
 */
 
-document.addEventListener('DOMContentLoaded',()=>{if(!window.hasCustomPopup){let styleElement=document.createElement("style"),cssCodeThemedPopups=".popup-plugin{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background-color:var(--color-2);color:var(--color-main-bright);padding:20px;border-radius:10px;box-shadow:0 4px 8px rgba(0,0,0,.4);opacity:0;transition:opacity .3s ease-in;z-index:9999;max-width:90vw;max-height:90vh;overflow:auto}@media (max-width:400px){.popup-plugin{padding:10px}}.popup-plugin-content{text-align:center}.popup-plugin button{margin-top:10px}.popup-plugin.open{opacity:.99}";styleElement.appendChild(document.createTextNode(cssCodeThemedPopups)),document.head.appendChild(styleElement)}});const isClickedOutsidePopup=!0;function alert(e,t){"undefined"==typeof t&&(t="OK"),popupOpened||(popup=document.createElement("div"),popup.classList.add("popup-plugin"),popup.innerHTML=`<div class="popup-plugin-content">${e.replace(/\n/g,"<br>")}<button id="popup-plugin-close">${t}</button></div>`,document.body.appendChild(popup),popup.querySelector("#popup-plugin-close").addEventListener("click",closePopup),popup.addEventListener("click",function(e){e.stopPropagation()}),setTimeout(function(){popup.classList.add("open"),popupOpened=!0,blurBackground(!0)},10))}function blurBackground(e){idModal&&(e?(idModal.style.display="block",setTimeout(function(){idModal.style.opacity="1"},40)):(setTimeout(function(){idModal.style.display="none"},400),idModal.style.opacity="0"))}let popupOpened=!1,popup,popupPromptOpened=!1,idModal=document.getElementById("myModal");function closePopup(e){e.stopPropagation(),popupOpened=!1,popup.classList.remove("open"),setTimeout(function(){popup.remove(),blurBackground(!1)},300);console.log(`[${pluginName}] Popup closed, user active.`);clearTimeout(popupTimeout);popupDisplayed=false;resetTimer()}document.addEventListener("keydown",function(e){popupOpened&&("Escape"===e.key||"Enter"===e.key)&&(closePopup(e),blurBackground(!1))}),isClickedOutsidePopup&&document.addEventListener("click",function(e){popupOpened&&!popup.contains(e.target)&&(closePopup(e),blurBackground(!1))});
+document.addEventListener('DOMContentLoaded', () => {
+    if (!window.hasCustomPopup) {
+        let styleElement = document.createElement("style"),
+            cssCodeThemedPopups = ".popup-plugin{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background-color:var(--color-2);color:var(--color-main-bright);padding:20px;border-radius:10px;box-shadow:0 4px 8px rgba(0,0,0,.4);opacity:0;transition:opacity .3s ease-in;z-index:9999;max-width:90vw;max-height:90vh;overflow:auto}@media (max-width:400px){.popup-plugin{padding:10px}}.popup-plugin-content{text-align:center}.popup-plugin button{margin-top:10px}.popup-plugin.open{opacity:.99}";
+        styleElement.appendChild(document.createTextNode(cssCodeThemedPopups)), document.head.appendChild(styleElement)
+    }
+});
+const isClickedOutsidePopup = !0;
+
+function alert(e, t) { "undefined" == typeof t && (t = "OK"), popupOpened || (popup = document.createElement("div"), popup.classList.add("popup-plugin"), popup.innerHTML = `<div class="popup-plugin-content">${e.replace(/\n/g,"<br>")}<button id="popup-plugin-close">${t}</button></div>`, document.body.appendChild(popup), popup.querySelector("#popup-plugin-close").addEventListener("click", closePopup), popup.addEventListener("click", function(e) { e.stopPropagation() }), setTimeout(function() { popup.classList.add("open"), popupOpened = !0, blurBackground(!0) }, 10)) }
+
+function blurBackground(e) { idModal && (e ? (idModal.style.display = "block", setTimeout(function() { idModal.style.opacity = "1" }, 40)) : (setTimeout(function() { idModal.style.display = "none" }, 400), idModal.style.opacity = "0")) }
+let popupOpened = !1,
+    popup, popupPromptOpened = !1,
+    idModal = document.getElementById("myModal");
+
+function closePopup(e) {
+    e.stopPropagation(), popupOpened = !1, popup.classList.remove("open"), setTimeout(function() { popup.remove(), blurBackground(!1) }, 300);
+    console.log(`[${pluginName}] Popup closed, user active.`);
+    sendActivityPing(true);
+    clearTimeout(popupTimeout);
+    popupDisplayed = false;
+    inactivityTime = 0;
+}
+document.addEventListener("keydown", function(e) { popupOpened && ("Escape" === e.key || "Enter" === e.key) && (closePopup(e), blurBackground(!1)) }), isClickedOutsidePopup && document.addEventListener("click", function(e) { popupOpened && !popup.contains(e.target) && (closePopup(e), blurBackground(!1)) });
 
 })();
