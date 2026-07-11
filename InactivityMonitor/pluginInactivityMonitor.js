@@ -1,5 +1,5 @@
 /*
-    Inactivity Monitor v1.2.0 by AAD
+    Inactivity Monitor v1.3.0 by AAD
     https://github.com/AmateurAudioDude/FM-DX-Webserver-Plugin-Inactivity-Monitor
 */
 
@@ -25,7 +25,7 @@ let RESET_TIMER_ON_FREQUENCY_CHANGE = true;     // Command sent to tuner
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-const pluginVersion = '1.2.0';
+const pluginVersion = '1.3.0';
 const pluginName = "Inactivity Monitor";
 const pluginHomepageUrl = "https://github.com/AmateurAudioDude/FM-DX-Webserver-Plugin-Inactivity-Monitor";
 const pluginUpdateUrl = "https://raw.githubusercontent.com/AmateurAudioDude/FM-DX-Webserver-Plugin-Inactivity-Monitor/refs/heads/main/InactivityMonitor/pluginInactivityMonitor.js";

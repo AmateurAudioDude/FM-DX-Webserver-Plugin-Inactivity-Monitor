@@ -1,5 +1,5 @@
 /*
-    Inactivity Monitor v1.2.0 by AAD
+    Inactivity Monitor v1.3.0 by AAD
 
     //// Server-side code ////
 */
@@ -19,7 +19,7 @@ const { logInfo, logWarn, logError } = require('../../server/console');
 const endpointsRouter = require('../../server/endpoints');
 
 // Get WebSockets
-let wss, pluginsWss;
+let wss, pluginsWss, httpServer;
 let useHooks = false;
 
 try {
@@ -28,6 +28,7 @@ try {
 
     wss = pluginsApi.getWss?.();
     pluginsWss = pluginsApi.getPluginsWss?.();
+    httpServer = pluginsApi.getHttpServer?.();
 
     useHooks = !!(wss && pluginsWss);
 
@@ -54,6 +55,7 @@ const configFilePath = path.join(configFolderPath, 'InactivityMonitor.json');
 // Plugin state
 const activityTracking = new Map(); // IP -> { lastActivity: timestamp, sessionStart: timestamp, ws: WebSocket, interval: intervalId }
 const tempBannedIPs = new Map(); // IP -> expirationTime
+const connectionHistory = new Map(); // IP -> [timestamp, ...]
 const wsToIp = new Map(); // Map<ws, ip>
 const whitelistedLogged = new Set();
 let debounceTimer, debounceTimerLog;
@@ -63,13 +65,19 @@ let whitelistedIps = ['127.0.0.1', '192.168.*.*'];
 let tempBanDuration = 1; // minutes, 0 = disabled
 let inactivityLimit = 32; // minutes
 let sessionLimit = 180; // minutes
+let rapidConnectThreshold = 5; // number of connections before ban triggers
+let rapidConnectWindowMinutes = 5; // sliding window to count connections
+let rapidConnectBanMinutes = 0; // 0 = disabled
 
 // Default configuration
 const defaultConfig = {
     whitelistedIps: ['127.0.0.1', '192.168.*.*'],
     tempBanDuration: 1,
     inactivityLimit: 32,
-    sessionLimit: 180
+    sessionLimit: 180,
+    rapidConnectThreshold: 5,
+    rapidConnectWindowMinutes: 5,
+    rapidConnectBanMinutes: 0
 };
 
 // Ensure config file exists
@@ -119,9 +127,15 @@ function loadConfig(isReloaded) {
         tempBanDuration = parseInt(orderedConfig.tempBanDuration) || defaultConfig.tempBanDuration;
         inactivityLimit = parseInt(orderedConfig.inactivityLimit) || defaultConfig.inactivityLimit;
         sessionLimit = parseInt(orderedConfig.sessionLimit) || defaultConfig.sessionLimit;
+        rapidConnectThreshold = parseInt(orderedConfig.rapidConnectThreshold) || defaultConfig.rapidConnectThreshold;
+        rapidConnectWindowMinutes = parseInt(orderedConfig.rapidConnectWindowMinutes) || defaultConfig.rapidConnectWindowMinutes;
+        rapidConnectBanMinutes = parseInt(orderedConfig.rapidConnectBanMinutes) || 0;
 
         logInfo(`[${pluginName}] Configuration ${isReloaded || ''}loaded successfully`);
         logInfo(`[${pluginName}] Inactivity limit: ${inactivityLimit} minutes, Session limit: ${sessionLimit} minutes, Temp ban duration: ${tempBanDuration} minutes`);
+        if (rapidConnectBanMinutes > 0) {
+            logInfo(`[${pluginName}] Rapid connect ban: ${rapidConnectThreshold} connections within ${rapidConnectWindowMinutes} minutes triggers a ${rapidConnectBanMinutes}-minute ban`);
+        }
     } catch (error) {
         logError(`[${pluginName}] Error loading configuration: ${error.message}`);
     }
@@ -195,7 +209,7 @@ function isTempBanned(ip) {
 }
 
 // Add temporary ban
-function addTempBan(ip, durationMinutes, pluginName) {
+function addTempBan(ip, durationMinutes, pluginName, reason = 'default') {
     if (durationMinutes <= 0) return;
 
     const normalizedIp = normalizeIp(ip);
@@ -210,7 +224,7 @@ function addTempBan(ip, durationMinutes, pluginName) {
         logInfo(`[${pluginName}] Removed temporary ban for IP ${normalizedIp}`);
     }, durationMinutes * 60 * 1000);
 
-    tempBannedIPs.set(normalizedIp, { expirationTime, timeout });
+    tempBannedIPs.set(normalizedIp, { expirationTime, timeout, reason });
 
     logWarn(`[${pluginName}] Temporarily banned IP ${normalizedIp} for ${durationMinutes} minute${durationMinutes !== 1 ? 's' : ''}`);
 }
@@ -284,6 +298,17 @@ setInterval(() => {
         tempBanDuration, // temp ban duration in minutes
         pluginName // plugin name string
     );
+
+    // Prune stale rapid-connect history
+    if (rapidConnectBanMinutes > 0) {
+        const now = Date.now();
+        const windowMs = rapidConnectWindowMinutes * 60 * 1000;
+        for (const [ip, history] of connectionHistory) {
+            const pruned = history.filter(t => now - t < windowMs);
+            if (pruned.length === 0) connectionHistory.delete(ip);
+            else connectionHistory.set(ip, pruned);
+        }
+    }
 }, 30 * 1000);
 
 // Update last activity timestamp
@@ -313,16 +338,19 @@ function handleConnection(ws, request) {
     }
 
     // Temp ban check
-    if (tempBanDuration > 0 && isTempBanned(normalizedIp)) {
-        const expirationTime = tempBannedIPs.get(normalizedIp).expirationTime;
-        const remainingMinutes = Math.ceil((expirationTime - Date.now()) / 60000);
+    if ((tempBanDuration > 0 || rapidConnectBanMinutes > 0) && isTempBanned(normalizedIp)) {
+        const banData = tempBannedIPs.get(normalizedIp);
+        const remainingMinutes = Math.ceil((banData.expirationTime - Date.now()) / 60000);
+        const banMsg = banData.reason === 'rapid_connect'
+            ? `Temporarily banned for rapid reconnection for ${remainingMinutes} more minute${remainingMinutes !== 1 ? 's' : ''}.`
+            : `Temporarily banned for ${remainingMinutes} more minute${remainingMinutes !== 1 ? 's' : ''}.`;
 
         ws.send('KICK'); // server-side kick if client-side fails
         ws.close(
             1008,
             JSON.stringify({
                 code: 'INACTIVITY_MONITOR',
-                msg: `Temporarily banned for ${remainingMinutes} more minute${remainingMinutes !== 1 ? 's' : ''}.`
+                msg: banMsg
             })
         );
 
@@ -387,6 +415,35 @@ function handleConnection(ws, request) {
 if (wss) {
     wss.on('connection', (ws, request) => handleConnection(ws, request));
     logInfo(`[${pluginName}] Main WebSocket server hooked`);
+}
+
+// Rapid connect tracking via HTTP upgrade, fires exactly once per page load,
+// at the HTTP level before any WebSocket state exists.
+if (httpServer) {
+    httpServer.on('upgrade', (request, socket) => {
+        if (request.url !== '/text') return;
+        if (rapidConnectBanMinutes <= 0 || rapidConnectThreshold <= 0) return;
+
+        const clientIp = request.headers['x-forwarded-for']?.split(',')[0] || socket.remoteAddress;
+        const normalizedIp = normalizeIp(clientIp);
+
+        if (isWhitelisted(normalizedIp) || isTempBanned(normalizedIp)) return;
+
+        const now = Date.now();
+        const windowMs = rapidConnectWindowMinutes * 60 * 1000;
+        let history = connectionHistory.get(normalizedIp) || [];
+        history = history.filter(t => now - t < windowMs);
+        history.push(now);
+        connectionHistory.set(normalizedIp, history);
+
+        if (debug) logInfo(`[${pluginName}] Rapid connect count for ${normalizedIp}: ${history.length}/${rapidConnectThreshold} (window: ${rapidConnectWindowMinutes}m)`);
+
+        if (history.length >= rapidConnectThreshold) {
+            connectionHistory.delete(normalizedIp);
+            addTempBan(normalizedIp, rapidConnectBanMinutes, pluginName, 'rapid_connect');
+        }
+    });
+    logInfo(`[${pluginName}] HTTP upgrade listener hooked for rapid connect tracking`);
 }
 
 // Plugin WebSocket
