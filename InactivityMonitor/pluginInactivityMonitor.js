@@ -1,5 +1,5 @@
 /*
-    Inactivity Monitor v1.3.0 by AAD
+    Inactivity Monitor v1.3.1 by AAD
     https://github.com/AmateurAudioDude/FM-DX-Webserver-Plugin-Inactivity-Monitor
 */
 
@@ -25,7 +25,7 @@ let RESET_TIMER_ON_FREQUENCY_CHANGE = true;     // Command sent to tuner
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-const pluginVersion = '1.3.0';
+const pluginVersion = '1.3.1';
 const pluginName = "Inactivity Monitor";
 const pluginHomepageUrl = "https://github.com/AmateurAudioDude/FM-DX-Webserver-Plugin-Inactivity-Monitor";
 const pluginUpdateUrl = "https://raw.githubusercontent.com/AmateurAudioDude/FM-DX-Webserver-Plugin-Inactivity-Monitor/refs/heads/main/InactivityMonitor/pluginInactivityMonitor.js";
@@ -207,7 +207,16 @@ var isTuneAuthenticated = false;
 
 document.addEventListener('DOMContentLoaded', () => {
     checkAdminMode();
-    checkTempBan();
+
+    // Waiting for the /text socket to open
+    if (window.socketPromise) {
+        let checked = false;
+        const runOnce = () => { if (!checked) { checked = true; checkTempBan(); } };
+        window.socketPromise.then(runOnce).catch(runOnce);
+        setTimeout(runOnce, 5000);
+    } else {
+        checkTempBan();
+    }
 });
 
 function checkAdminMode() {
@@ -224,6 +233,28 @@ function checkAdminMode() {
     }
 }
 
+// sendToast is defined by the core after plugins load, wait for it.
+// TropoForecast installs its own console-only fallback for
+// window.sendToast, causing a silent fail, therefore confirm the toast
+// actually landed in the DOM rather than trusting typeof
+function toastWhenReady(type, title, message, attempts) {
+    if (typeof attempts === 'undefined') attempts = 60;   // 15 seconds
+
+    const container = document.getElementById('toast-container');
+    const before = container ? container.children.length : 0;
+
+    if (typeof sendToast === 'function') {
+        sendToast(type, title, message, false, false);
+        if (!container || container.children.length > before) return;
+    }
+
+    if (attempts <= 0) {
+        console.warn(`[${pluginName}] sendToast unavailable after 15s, dropped: ${message}`);
+        return;
+    }
+    setTimeout(function () { toastWhenReady(type, title, message, attempts - 1); }, 250);
+}
+
 function checkTempBan() {
     // Check if temporarily banned
     fetch('/inactivity-monitor-plugin-check-ban', {
@@ -237,6 +268,16 @@ function checkTempBan() {
             if (data.banned) {
                 console.warn(`[${pluginName}] IP is temporarily banned, redirecting...`);
                 window.location.href = '/403_inactivitymonitor?msg=Temporarily+banned+for+exceeding+session+limit.';
+                return;
+            }
+
+            // Warn when one more page load would trigger a rapid connect ban
+            if (data.rapidConnectRemaining === 1 && ENABLE_TOASTS) {
+                const mins = data.rapidConnectBanMinutes;
+                const win = data.rapidConnectWindowMinutes;
+                toastWhenReady('warning', 'Inactivity Monitor',
+                    `Slow down. Another reload within ${win} minute${win !== 1 ? 's' : ''} ` +
+                    `will temporarily block access for ${mins} minute${mins !== 1 ? 's' : ''}.`);
             }
         })
         .catch(error => {
@@ -273,8 +314,8 @@ function cancelTimer(reason, reasonToast, noDisplay) {
         clearInterval(intervalInactivity);
     }, 1000);
 
-    if (typeof sendToast === 'function' && ENABLE_TOASTS && !noDisplay) {
-        sendToast('info', 'Inactivity Monitor', reasonToast, false, false);
+    if (ENABLE_TOASTS && !noDisplay) {
+        toastWhenReady('info', 'Inactivity Monitor', reasonToast);
     }
 
     console.log(reason);

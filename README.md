@@ -18,6 +18,16 @@ This plugin monitors for webpage user inactivity over a specified period of time
 IP addresses can be whitelisted inside `InactivityMonitor.json`, located in the `plugins_configs` folder. Changes made to the config file take immediate effect, so there's no need to restart the server after an edit.
 
 
+v1.3.1
+------
+* Added rapid-connect warning toast to warn when one more page load would trigger a temporary ban
+* Rapid-connect tracking ignores reconnects while the tuner is down
+* Toasts wait for sendToast to be available
+
+v1.3.0
+------
+* Added rapid-connect temporary ban options
+
 v1.2.0
 ------
 * Updated to use FM-DX Webserver plugin API

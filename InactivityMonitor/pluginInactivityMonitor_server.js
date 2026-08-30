@@ -1,5 +1,5 @@
 /*
-    Inactivity Monitor v1.3.0 by AAD
+    Inactivity Monitor v1.3.1 by AAD
 
     //// Server-side code ////
 */
@@ -17,6 +17,27 @@ const path = require('path');
 // File imports
 const { logInfo, logWarn, logError } = require('../../server/console');
 const endpointsRouter = require('../../server/endpoints');
+
+// Serialport health, used to ignore client-side reconnects caused by a dead tuner
+let dataHandler = null;
+try {
+    dataHandler = require('../../server/datahandler');
+} catch (err) {
+    logWarn(`[${pluginName}] Could not load datahandler, serialport health check disabled`);
+}
+
+function isSerialportDown() {
+    const serialportState = dataHandler?.state;
+    if (!serialportState) return false;
+
+    // isSerialportAlive/isSerialportRetrying used to check if client-side
+    // reconnection is cause by a disconnected tuner
+    const down = serialportState.isSerialportAlive === false || serialportState.isSerialportRetrying === true;
+
+    if (debug) logInfo(`[${pluginName}] Serialport alive: ${serialportState.isSerialportAlive}, retrying: ${serialportState.isSerialportRetrying}, treated as down: ${down}`);
+
+    return down;
+}
 
 // Get WebSockets
 let wss, pluginsWss, httpServer;
@@ -424,6 +445,10 @@ if (httpServer) {
         if (request.url !== '/text') return;
         if (rapidConnectBanMinutes <= 0 || rapidConnectThreshold <= 0) return;
 
+        // Clients reconnect continuously while the tuner link is down, do
+        // not count those attempts
+        if (isSerialportDown()) return;
+
         const clientIp = request.headers['x-forwarded-for']?.split(',')[0] || socket.remoteAddress;
         const normalizedIp = normalizeIp(clientIp);
 
@@ -458,9 +483,19 @@ endpointsRouter.get('/inactivity-monitor-plugin-check-ban', (req, res) => {
 
     if (pluginHeader === 'InactivityMonitor') {
         const clientIp = req.headers['x-forwarded-for']?.split(',')[0] || req.connection.remoteAddress;
-        const isBanned = isTempBanned(clientIp);
+        const normalizedIp = normalizeIp(clientIp);
+        const isBanned = isTempBanned(normalizedIp);
 
-        res.json({ banned: isBanned });
+        // Page loads still available before a rapid connect ban triggers
+        let rapidConnectRemaining = 0;
+        if (rapidConnectBanMinutes > 0 && rapidConnectThreshold > 0 && !isBanned && !isWhitelisted(normalizedIp)) {
+            const now = Date.now();
+            const windowMs = rapidConnectWindowMinutes * 60 * 1000;
+            const history = (connectionHistory.get(normalizedIp) || []).filter(t => now - t < windowMs);
+            rapidConnectRemaining = Math.max(0, rapidConnectThreshold - history.length);
+        }
+
+        res.json({ banned: isBanned, rapidConnectRemaining, rapidConnectBanMinutes, rapidConnectWindowMinutes });
     } else {
         res.status(403).json({ error: 'Unauthorised' });
     }
